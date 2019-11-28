@@ -1,31 +1,46 @@
 using System;
 using System.Collections.Generic;
 using Random = UnityEngine.Random;
+using UnityEngine;
 
 public class ShapeGrammar
 {
     Shape axiom;
     Shape sentence;
     int floors;
+    bool[] randomize = new bool[3];
+    float minXZSize = 1f;
+    float maxXZSize = 1f;
+    float maxPlanarOffset = 0f;
+    float maxAngleOffset = 0f;
+    int maxFloors = 1;
 
-    // Generate soll eine callback-Action auslösen, die übergeben wird
+    public ShapeGrammar(bool[] randomize, float minXZSize, float maxXZSize, float maxPlanarOffset, float maxAngleOffset, int maxFloors)
+    {
+        this.randomize = randomize;
+        this.minXZSize = minXZSize;
+        this.maxXZSize = maxXZSize;
+        this.maxPlanarOffset = maxPlanarOffset;
+        this.maxAngleOffset = maxAngleOffset;
+        this.maxFloors = maxFloors;
+    }
+
+    public ShapeGrammar()
+    {
+    }
+
     public void Generate(Action<HouseData> buildHouse)
     {
-        // fürs erste die Floor-Daten
-        float width = Random.Range(3f, 20f);
-        float length = Random.Range(3f, 20f);
+        float width = Random.Range(minXZSize, maxXZSize);
+        float length = Random.Range(minXZSize, maxXZSize);
         float height = 1f;
-        // Wir beginnen mit einem Basefloor als Start
-        axiom = new BaseFloor(width, length, height);
+        axiom = new GroundFloor(new ShapeData(width, length, height, Vector2.zero, maxPlanarOffset, maxAngleOffset, 0f, maxFloors, randomize));
         sentence = axiom;
-        // und bringen die Sache ins Rollen
         sentence.Expand();
-        // wir erstellen ein HouseData-Objekt
         HouseData houseData = new HouseData
         {
             Floors = new List<Floor>()
         };
-        // am Ende durch die verlinkten Shapes durchsteppen und houseData entsprechend füllen
         while (sentence != null)
         {
             switch (sentence.ShapeType)
@@ -33,7 +48,7 @@ public class ShapeGrammar
                 case Shape.ST.Default:
                     break;
                 case Shape.ST.Base:
-                    houseData.BaseFloor = (BaseFloor)sentence;
+                    houseData.BaseFloor = (GroundFloor)sentence;
                     break;
                 case Shape.ST.Floor:
                     houseData.Floors.Add((Floor)sentence);
@@ -46,42 +61,55 @@ public class ShapeGrammar
             }
             sentence = sentence.NextShape;
         }
-        // und das Haus bauen!
         buildHouse(houseData);
     }
 }
 
-public class BaseFloor : Shape
+public class GroundFloor : Shape
 {
-    float mySpecialHeight;
+    ShapeData myData;
+    public override ShapeData Data => myData;
 
-    public override float Height { get { return mySpecialHeight; } }
-
-    // der normale Constructor
-    public BaseFloor(float width, float length, float height) : base(width, length, height)
+    public GroundFloor(ShapeData data) : base(data)
     {
+        myData = new ShapeData(data.Width, data.Length, Random.Range(1f, 3f), data.PlanarOffset, data.MaxPlanarOffset, data.MaxAngleOffset, data.AngleOffset, data.MaxFloors, data.Randomize);
         shapeType = ST.Base;
-        mySpecialHeight = Random.Range(1f, 3f);
     }
 
-    // parameterloser Constructor
-    public BaseFloor() : base()
+    public GroundFloor() : base()
     {
         shapeType = ST.Base;
     }
 
     public override void Expand()
     {
-        nextShape = new Floor(width, length, height);
+        nextShape = new Floor(base.Data, 0);
         nextShape.Expand();
     }
 }
 
-
 public class Floor : Shape
 {
-    public Floor(float width, float length, float height) : base(width, length, height)
+    ShapeData myData;
+    public override ShapeData Data => myData;
+    public int FloorIdx { get; }
+
+    public Floor(ShapeData data, int floorIdx) : base(data)
     {
+        Vector2 planarOffset;
+        float angleOffset;
+        FloorIdx = floorIdx;
+        if (data.Randomize[0])
+        {
+            planarOffset = new Vector2(Random.Range(-data.MaxPlanarOffset, data.MaxPlanarOffset), Random.Range(-data.MaxPlanarOffset, data.MaxPlanarOffset));
+            angleOffset = Random.Range(0, data.AngleOffset);
+        }
+        else
+        {
+            planarOffset = data.PlanarOffset;
+            angleOffset = data.AngleOffset;
+        }
+        myData = new ShapeData(data.Width, data.Length, data.Height, planarOffset, data.MaxPlanarOffset, data.MaxAngleOffset, angleOffset, data.MaxFloors, data.Randomize);
         shapeType = ST.Floor;
     }
 
@@ -90,63 +118,54 @@ public class Floor : Shape
         shapeType = ST.Floor;
     }
 
-    // die Floor Shapes entscheiden von Fall zu Fall, ob es weitergeht, oder das Dach folgt
     public override void Expand()
     {
         float decide = Random.value;
-        if (decide > 0.1f)
+        if (decide > 0.1f && FloorIdx < myData.MaxFloors - 1)
         {
-            nextShape = new Floor(width, length, height);
+            nextShape = new Floor(Data, FloorIdx + 1);
             nextShape.Expand();
         }
         else
         {
-            nextShape = new Roof(width, length, height);
+            nextShape = new Roof(Data);
         }
     }
-
 }
 
 public class Roof : Shape
 {
-    public override float Height { get { return 0.5f; } }
+    ShapeData myData;
+    public override ShapeData Data => myData;
 
-    public Roof(float width, float height, float length) : base(width, height, length)
+    public Roof(ShapeData data) : base(data)
+    {
+        myData = new ShapeData(data.Width, data.Length, 0.5f, data.PlanarOffset, data.MaxPlanarOffset, data.AngleOffset, data.MaxAngleOffset, data.MaxFloors, data.Randomize);
+        shapeType = ST.Roof;
+    }
+
+    public Roof()
     {
         shapeType = ST.Roof;
     }
 
-    public Roof() : base()
-    {
-        shapeType = ST.Roof;
-    }
-
-    // nach dem Dach passiert momentan nichts mehr, nextShape bleibt null.
     public override void Expand()
     {
     }
 }
 
-// abstrakte Klasse als Vorbild
 public abstract class Shape
 {
-    protected float width = 1f;
-    public float Width { get { return width; } }
-    protected float length = 1f;
-    public float Length { get { return length; } }
-    protected float height = 1f;
-    public virtual float Height { get { return height; } }
+    public virtual ShapeData Data { get; }
 
     protected ST shapeType;
     public ST ShapeType { get { return shapeType; } }
     protected Shape nextShape;
     public Shape NextShape { get { return nextShape; } }
 
-    public Shape(float width, float length, float height)
+    public Shape(ShapeData data)
     {
-        this.width = width;
-        this.length = length;
-        this.height = height;
+        Data = data;
     }
 
     public Shape()
@@ -155,17 +174,41 @@ public abstract class Shape
 
     public abstract void Expand();
 
-    // die momentanen Arten von Shape. Default ist nicht umgesetzt
     public enum ST
     {
         Default, Base, Floor, Roof,
     }
 }
 
-// ein Erdgeschoß, ggf. mehrere Stockwerke, ein Dach
+public struct ShapeData
+{
+    public float Width { get; }
+    public float Length { get; }
+    public float Height { get; }
+    public Vector2 PlanarOffset { get; }
+    public float AngleOffset { get; }
+    public float MaxPlanarOffset { get; }
+    public float MaxAngleOffset { get; }
+    public int MaxFloors { get; }
+    public bool[] Randomize { get; }
+
+    public ShapeData(float width, float length, float height, Vector2 planarOffset, float maxPlanarOffset, float angleOffset, float maxAngleOffset, int maxFloors, bool[] randomize)
+    {
+        Width = width;
+        Length = length;
+        Height = height;
+        PlanarOffset = planarOffset;
+        MaxPlanarOffset = maxPlanarOffset;
+        AngleOffset = angleOffset;
+        MaxAngleOffset = maxAngleOffset;
+        MaxFloors = maxFloors;
+        Randomize = randomize;
+    }
+}
+
 public class HouseData
 {
-    public BaseFloor BaseFloor { get; set; }
+    public GroundFloor BaseFloor { get; set; }
     public List<Floor> Floors { get; set; }
     public Roof Roof { get; set; }
 }
