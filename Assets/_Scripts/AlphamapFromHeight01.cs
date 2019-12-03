@@ -20,7 +20,7 @@ public class AlphamapFromHeight01 : MonoBehaviour
     {
         terrain = GetComponent<Terrain>();
         data = terrain.terrainData;
-        maxHeight = GetMaxHeight(data, data.heightmapWidth);
+        maxHeight = GetMaxHeight(data, data.heightmapResolution);
         alphamap = new float[data.alphamapWidth, data.alphamapHeight, data.alphamapLayers];
         for (int i = 0; i < textureAttributes.Count; i++)
         {
@@ -48,7 +48,7 @@ public class AlphamapFromHeight01 : MonoBehaviour
                 float x_01 = (float)x / (float)data.alphamapWidth;
                 float y_01 = (float)y / (float)data.alphamapHeight;
 
-                float height = data.GetHeight(Mathf.RoundToInt(y_01 * data.heightmapHeight), Mathf.RoundToInt(x_01 * data.heightmapWidth));
+                float height = data.GetHeight(Mathf.RoundToInt(y_01 * data.heightmapResolution), Mathf.RoundToInt(x_01 * data.heightmapResolution));
                 // Wir normalisieren auf die tatsächliche Höhe, statt höchstmögliche Höhe, um nicht bei Höhenänderungen neu einstellen zu müssen.
                 float normHeight = height / maxHeight;
                 // steepness liefert einen Winkel zwischen 0 und 90 als Wert zurück.
